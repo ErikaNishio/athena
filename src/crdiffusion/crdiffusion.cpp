@@ -33,18 +33,27 @@
 //! \fn CRDiffusion::CRDiffusion(MeshBlock *pmb, ParameterInput *pin)
 //! \brief CRDiffusion constructor
 CRDiffusion::CRDiffusion(MeshBlock *pmb, ParameterInput *pin) :
-    pmy_block(pmb), ecr(pmb->ncells3, pmb->ncells2, pmb->ncells1),
-    source(pmb->ncells3, pmb->ncells2, pmb->ncells1),
-    coeff(NCOEFF, pmb->ncells3, pmb->ncells2, pmb->ncells1),
+    pmy_block(pmb), 
+    ecr1(pmb->ncells3, pmb->ncells2, pmb->ncells1),
+    ecr2(pmb->ncells3, pmb->ncells2, pmb->ncells1),
+    source1(pmb->ncells3, pmb->ncells2, pmb->ncells1),
+    source2(pmb->ncells3, pmb->ncells2, pmb->ncells1),
+    coeff1(NCOEFF, pmb->ncells3, pmb->ncells2, pmb->ncells1),
+    coeff2(NCOEFF, pmb->ncells3, pmb->ncells2, pmb->ncells1),
     coarse_ecr(pmb->ncc3, pmb->ncc2, pmb->ncc1,
               (pmb->pmy_mesh->multilevel ? AthenaArray<Real>::DataStatus::allocated :
                AthenaArray<Real>::DataStatus::empty)),
     empty_flux{AthenaArray<Real>(), AthenaArray<Real>(), AthenaArray<Real>()},
     output_defect(false), crbvar(pmb, &ecr, &coarse_ecr, empty_flux, false),
-    refinement_idx_(), Dpara_(), Dperp_(), Lambda_() {
-  Dpara_ = pin->GetReal("crdiffusion", "Dpara");
-  Dperp_ = pin->GetReal("crdiffusion", "Dperp");
-  Lambda_ = pin->GetReal("crdiffusion", "Lambda");
+    refinement_idx_(), 
+    Dpara1_(), Dperp1_(), Lambda1_(),
+    Dpara2_(), Dperp2_(), Lambda2_() {
+  Dpara1_ = pin->GetReal("crdiffusion", "Dpara1");
+  Dperp1_ = pin->GetReal("crdiffusion", "Dperp1");
+  Lambda1_ = pin->GetReal("crdiffusion", "Lambda1");
+  Dpara2_ = pin->GetReal("crdiffusion", "Dpara2");
+  Dperp2_ = pin->GetReal("crdiffusion", "Dperp2");
+  Lambda2_ = pin->GetReal("crdiffusion", "Lambda2");
 
   output_defect = pin->GetOrAddBoolean("crdiffusion", "output_defect", false);
   if (output_defect)
@@ -84,7 +93,8 @@ void CRDiffusion::CalculateCoefficients(const AthenaArray<Real> &w,
     jl -= NGHOST, ju += NGHOST;
   if (pmy_block->pmy_mesh->f3)
     kl -= NGHOST, ku += NGHOST;
-  Real Dpara = Dpara_, Dperp = Dperp_, Lambda = Lambda_;
+  Real Dpara1 = Dpara1_, Dperp1 = Dperp1_, Lambda1 = Lambda1_;
+  Real Dpara2 = Dpara2_, Dperp2 = Dperp2_, Lambda2 = Lambda2_;
 
   if (MAGNETIC_FIELDS_ENABLED) {
     for (int k = kl; k <= ku; ++k) {
@@ -95,13 +105,21 @@ void CRDiffusion::CalculateCoefficients(const AthenaArray<Real> &w,
           const Real &bz = bcc(IB3,k,j,i);
           Real ba = std::sqrt(SQR(bx) + SQR(by) + SQR(bz) + TINY_NUMBER);
           Real nx = bx / ba, ny = by / ba, nz = bz / ba;
-          coeff(DXX,k,j,i) = Dperp + (Dpara - Dperp) * nx * nx;
-          coeff(DXY,k,j,i) =         (Dpara - Dperp) * nx * ny;
-          coeff(DXZ,k,j,i) =         (Dpara - Dperp) * nx * nz;
-          coeff(DYY,k,j,i) = Dperp + (Dpara - Dperp) * ny * ny;
-          coeff(DYZ,k,j,i) =         (Dpara - Dperp) * ny * nz;
-          coeff(DZZ,k,j,i) = Dperp + (Dpara - Dperp) * nz * nz;
-          coeff(NLAMBDA, k,j,i) = Lambda * w(IDN,k,j,i);
+          coeff1(DXX,k,j,i) = Dperp1 + (Dpara1 - Dperp1) * nx * nx;
+          coeff1(DXY,k,j,i) =         (Dpara1 - Dperp1) * nx * ny;
+          coeff1(DXZ,k,j,i) =         (Dpara1 - Dperp1) * nx * nz;
+          coeff1(DYY,k,j,i) = Dperp1 + (Dpara1 - Dperp1) * ny * ny;
+          coeff1(DYZ,k,j,i) =         (Dpara1 - Dperp1) * ny * nz;
+          coeff1(DZZ,k,j,i) = Dperp1 + (Dpara1 - Dperp1) * nz * nz;
+          coeff1(NLAMBDA, k,j,i) = Lambda1 * w(IDN,k,j,i);
+
+          coeff2(DXX,k,j,i) = Dperp2 + (Dpara2 - Dperp2) * nx * nx;
+          coeff2(DXY,k,j,i) =         (Dpara2 - Dperp2) * nx * ny;
+          coeff2(DXZ,k,j,i) =         (Dpara2 - Dperp2) * nx * nz;
+          coeff2(DYY,k,j,i) = Dperp2 + (Dpara2 - Dperp2) * ny * ny;
+          coeff2(DYZ,k,j,i) =         (Dpara2 - Dperp2) * ny * nz;
+          coeff2(DZZ,k,j,i) = Dperp2 + (Dpara2 - Dperp2) * nz * nz;
+          coeff2(NLAMBDA, k,j,i) = Lambda2 * w(IDN,k,j,i);
         }
       }
     }
