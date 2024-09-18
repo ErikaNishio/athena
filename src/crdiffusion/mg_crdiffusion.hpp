@@ -33,20 +33,20 @@ class MGCRDiffusion : public Multigrid {
   MGCRDiffusion(MGCRDiffusionDriver *pmd, MeshBlock *pmb);
   ~MGCRDiffusion();
 
-  void AddCRSource(const AthenaArray<Real> &src, int ngh, Real dt);
+  void AddCRSource(const AthenaArray<Real> &src, int ngh, Real dt,int NECRbin);
 
   void Smooth(AthenaArray<Real> &dst, const AthenaArray<Real> &src,
               const AthenaArray<Real> &coeff, const AthenaArray<Real> &matrix, int rlev,
-              int il, int iu, int jl, int ju, int kl, int ku, int color, bool th) final;
+              int il, int iu, int jl, int ju, int kl, int ku, int color, bool th,int NECRbin) final;
   void CalculateDefect(AthenaArray<Real> &def, const AthenaArray<Real> &u,
                 const AthenaArray<Real> &src, const AthenaArray<Real> &coeff,
                 const AthenaArray<Real> &matrix, int rlev, int il, int iu, int jl, int ju,
-                int kl, int ku, bool th) final;
+                int kl, int ku, bool th,int NECRbin) final;
   void CalculateFASRHS(AthenaArray<Real> &def, const AthenaArray<Real> &src,
                 const AthenaArray<Real> &coeff, const AthenaArray<Real> &matrix,
-                int rlev, int il, int iu, int jl, int ju, int kl, int ku, bool th) final;
+                int rlev, int il, int iu, int jl, int ju, int kl, int ku, bool th,int NECRbin) final;
   void CalculateMatrix(AthenaArray<Real> &matrix, const AthenaArray<Real> &coeff,
-       Real dt, int rlev, int il, int iu, int jl, int ju, int kl, int ku, bool th) final;
+       Real dt, int rlev, int il, int iu, int jl, int ju, int kl, int ku, bool th,int NECRbin ) final;
 
   friend class MGCRDiffusionDriver;
 

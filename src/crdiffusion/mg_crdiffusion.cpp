@@ -167,32 +167,36 @@ MGCRDiffusion::~MGCRDiffusion() {
 //!                                           int ngh, Real dt)
 //! \brief Add the cosmic-ray source term
 
-void MGCRDiffusion::AddCRSource(const AthenaArray<Real> &src, int ngh, Real dt) {
+void MGCRDiffusion::AddCRSource(const AthenaArray<Real> &src, int ngh, Real dt,int NECRbin) {
   AthenaArray<Real> &dst=src_[nlevel_-1];
   int is, ie, js, je, ks, ke;
   is=js=ks=ngh_;
   ie=is+size_.nx1-1, je=js+size_.nx2-1, ke=ks+size_.nx3-1;
   if (!(static_cast<MGCRDiffusionDriver*>(pmy_driver_)->fsteady_)) {
-    for (int mk=ks; mk<=ke; ++mk) {
-      int k = mk - ks + ngh;
-      for (int mj=js; mj<=je; ++mj) {
-        int j = mj - js + ngh;
-#pragma omp simd
-        for (int mi=is; mi<=ie; ++mi) {
-          int i = mi - is + ngh;
-          dst(mk,mj,mi) += dt * src(k,j,i);
+    for (int n=0; n <= NECRbin; ++n){
+      for (int mk=ks; mk<=ke; ++mk) {
+        int k = mk - ks + ngh;
+        for (int mj=js; mj<=je; ++mj) {
+          int j = mj - js + ngh;
+  #pragma omp simd
+          for (int mi=is; mi<=ie; ++mi) {
+            int i = mi - is + ngh;
+            dst(n,mk,mj,mi) += dt * src(n,k,j,i);
+          }
         }
       }
     }
   } else {
-    for (int mk=ks; mk<=ke; ++mk) {
-      int k = mk - ks + ngh;
-      for (int mj=js; mj<=je; ++mj) {
-        int j = mj - js + ngh;
-#pragma omp simd
-        for (int mi=is; mi<=ie; ++mi) {
-          int i = mi - is + ngh;
-          dst(mk,mj,mi) = src(k,j,i);
+    for (int n=0; n <= NECRbin; ++n){
+      for (int mk=ks; mk<=ke; ++mk) {
+        int k = mk - ks + ngh;
+        for (int mj=js; mj<=je; ++mj) {
+          int j = mj - js + ngh;
+  #pragma omp simd
+          for (int mi=is; mi<=ie; ++mi) {
+            int i = mi - is + ngh;
+            dst(n,mk,mj,mi) = src(n,k,j,i);
+          }
         }
       }
     }
@@ -225,7 +229,7 @@ void MGCRDiffusionDriver::Solve(int stage, Real dt) {
     if (mode_ == 1) // load the current data as the initial guess
       pmg->LoadFinestData(pcrdiff->ecr, 0, NGHOST);
     pmg->LoadCoefficients(pcrdiff->coeff, NGHOST);
-    pmg->AddCRSource(pcrdiff->source, NGHOST, dt);
+    pmg->AddCRSource(pcrdiff->source, NGHOST, dt, pcrdiff->NECRbin_);
   }
 
   if (dt > 0.0 || fsteady_) {
@@ -278,7 +282,7 @@ void MGCRDiffusionDriver::Solve(int stage, Real dt) {
 
 void MGCRDiffusion::Smooth(AthenaArray<Real> &u, const AthenaArray<Real> &src,
          const AthenaArray<Real> &coeff, const AthenaArray<Real> &matrix, int rlev,
-         int il, int iu, int jl, int ju, int kl, int ku, int color, bool th) {
+         int il, int iu, int jl, int ju, int kl, int ku, int color, bool th,int NECRbin) {
   Real dx;
   if (rlev <= 0) dx = rdx_*static_cast<Real>(1<<(-rlev));
   else           dx = rdx_/static_cast<Real>(1<<rlev);
@@ -291,21 +295,23 @@ void MGCRDiffusion::Smooth(AthenaArray<Real> &u, const AthenaArray<Real> &src,
 #pragma omp parallel num_threads(pmy_driver_->nthreads_)
       {
 #pragma omp for
-        for (int k=kl; k<=ku; k++) {
-          for (int j=jl; j<=ju; j++) {
-            int c = (color + k + j) & 1;
+        for (int n=0 ; n <= NCRbin; n++){
+          for (int k=kl; k<=ku; k++) {
+            for (int j=jl; j<=ju; j++) {
+              int c = (color + k + j) & 1;
 #pragma ivdep
-            for (int i=il+c; i<=iu; i+=2) {
-              Real M = matrix(CCM,k,j,i)*u(k,j,i-1)   + matrix(CCP,k,j,i)*u(k,j,i+1)
-                     + matrix(CMC,k,j,i)*u(k,j-1,i)   + matrix(CPC,k,j,i)*u(k,j+1,i)
-                     + matrix(MCC,k,j,i)*u(k-1,j,i)   + matrix(PCC,k,j,i)*u(k+1,j,i)
-                     + matrix(CMM,k,j,i)*u(k,j-1,i-1) + matrix(CMP,k,j,i)*u(k,j-1,i+1)
-                     + matrix(CPM,k,j,i)*u(k,j+1,i-1) + matrix(CPP,k,j,i)*u(k,j+1,i+1)
-                     + matrix(MCM,k,j,i)*u(k-1,j,i-1) + matrix(MCP,k,j,i)*u(k-1,j,i+1)
-                     + matrix(PCM,k,j,i)*u(k+1,j,i-1) + matrix(PCP,k,j,i)*u(k+1,j,i+1)
-                     + matrix(MMC,k,j,i)*u(k-1,j-1,i) + matrix(MPC,k,j,i)*u(k-1,j+1,i)
-                     + matrix(PMC,k,j,i)*u(k+1,j-1,i) + matrix(PPC,k,j,i)*u(k+1,j+1,i);
-                work(k,j,i) = (src(k,j,i) - M) / matrix(CCC,k,j,i);
+              for (int i=il+c; i<=iu; i+=2) {
+                Real M = matrix(n,CCM,k,j,i)*u(k,j,i-1)   + matrix(n,CCP,k,j,i)*u(k,j,i+1)
+                      + matrix(n,CMC,k,j,i)*u(k,j-1,i)   + matrix(n,CPC,k,j,i)*u(k,j+1,i)
+                      + matrix(n,MCC,k,j,i)*u(k-1,j,i)   + matrix(n,PCC,k,j,i)*u(k+1,j,i)
+                      + matrix(n,CMM,k,j,i)*u(k,j-1,i-1) + matrix(n,CMP,k,j,i)*u(k,j-1,i+1)
+                      + matrix(n,CPM,k,j,i)*u(k,j+1,i-1) + matrix(n,CPP,k,j,i)*u(k,j+1,i+1)
+                      + matrix(n,MCM,k,j,i)*u(k-1,j,i-1) + matrix(n,MCP,k,j,i)*u(k-1,j,i+1)
+                      + matrix(n,PCM,k,j,i)*u(k+1,j,i-1) + matrix(n,PCP,k,j,i)*u(k+1,j,i+1)
+                      + matrix(n,MMC,k,j,i)*u(k-1,j-1,i) + matrix(n,MPC,k,j,i)*u(k-1,j+1,i)
+                      + matrix(n,PMC,k,j,i)*u(k+1,j-1,i) + matrix(n,PPC,k,j,i)*u(k+1,j+1,i);
+                  work(k,j,i) = (src(k,j,i) - M) / matrix(CCC,k,j,i);
+              }
             }
           }
         }
@@ -432,7 +438,7 @@ void MGCRDiffusion::Smooth(AthenaArray<Real> &u, const AthenaArray<Real> &src,
 void MGCRDiffusion::CalculateDefect(AthenaArray<Real> &def, const AthenaArray<Real> &u,
                     const AthenaArray<Real> &src, const AthenaArray<Real> &coeff,
                     const AthenaArray<Real> &matrix, int rlev, int il, int iu,
-                    int jl, int ju, int kl, int ku, bool th) {
+                    int jl, int ju, int kl, int ku, bool th,int NECRbin) {
   Real dx;
   if (rlev <= 0) dx = rdx_*static_cast<Real>(1<<(-rlev));
   else           dx = rdx_/static_cast<Real>(1<<rlev);
@@ -472,7 +478,7 @@ void MGCRDiffusion::CalculateDefect(AthenaArray<Real> &def, const AthenaArray<Re
 
 void MGCRDiffusion::CalculateFASRHS(AthenaArray<Real> &src, const AthenaArray<Real> &u,
                     const AthenaArray<Real> &coeff, const AthenaArray<Real> &matrix,
-                    int rlev, int il, int iu, int jl, int ju, int kl, int ku, bool th) {
+                    int rlev, int il, int iu, int jl, int ju, int kl, int ku, bool th,int NECRbin) {
   Real dx;
   if (rlev <= 0) dx = rdx_*static_cast<Real>(1<<(-rlev));
   else           dx = rdx_/static_cast<Real>(1<<rlev);
@@ -510,7 +516,7 @@ void MGCRDiffusion::CalculateFASRHS(AthenaArray<Real> &src, const AthenaArray<Re
 
 void MGCRDiffusion::CalculateMatrix(AthenaArray<Real> &matrix,
                              const AthenaArray<Real> &coeff, Real dt, int rlev,
-                             int il, int iu, int jl, int ju, int kl, int ku, bool th) {
+                             int il, int iu, int jl, int ju, int kl, int ku, bool th,int NECRbin) {
   Real dx;
   if (rlev <= 0) dx = rdx_*static_cast<Real>(1<<(-rlev));
   else           dx = rdx_/static_cast<Real>(1<<rlev);
