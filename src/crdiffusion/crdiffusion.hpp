@@ -43,6 +43,7 @@ class CRDiffusion {
   MeshBlock* pmy_block;
   MGCRDiffusion *pmg;
   AthenaArray<Real> ecr, source, zeta, coeff;
+  AthenaArray<Real> Dpara,Dperp,Lambda;
   AthenaArray<Real> coarse_ecr, empty_flux[3];
   AthenaArray<Real> def;   // defect from the Multigrid solver
   bool output_defect;
@@ -56,7 +57,8 @@ class CRDiffusion {
 
  private:
   int refinement_idx_;
-  Real Dpara_, Dperp_, Lambda_;
+  //Real Dpara_, Dperp_, Lambda_;
+  int NECRbin_;
 };
 
 #endif // CRDIFFUSION_CRDIFFUSION_HPP_

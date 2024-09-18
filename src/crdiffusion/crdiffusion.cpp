@@ -33,24 +33,26 @@
 //! \fn CRDiffusion::CRDiffusion(MeshBlock *pmb, ParameterInput *pin)
 //! \brief CRDiffusion constructor
 CRDiffusion::CRDiffusion(MeshBlock *pmb, ParameterInput *pin) :
-    pmy_block(pmb), ecr(NECR,pmb->ncells3, pmb->ncells2, pmb->ncells1),
-    source(NECR,pmb->ncells3, pmb->ncells2, pmb->ncells1),
-    coeff(NECR,NCOEFF, pmb->ncells3, pmb->ncells2, pmb->ncells1),
-    coarse_ecr(pmb->ncc3, pmb->ncc2, pmb->ncc1,
+    pmy_block(pmb), 
+    ecr(pin->GetInteger("crdiffusion", "NECRbin"),pmb->ncells3, pmb->ncells2, pmb->ncells1),
+    source(pin->GetInteger("crdiffusion", "NECRbin"),pmb->ncells3, pmb->ncells2, pmb->ncells1),
+    coeff(pin->GetInteger("crdiffusion", "NECRbin"),NCOEFF, pmb->ncells3, pmb->ncells2, pmb->ncells1),
+    coarse_ecr(pin->GetInteger("crdiffusion", "NECRbin"),pmb->ncc3, pmb->ncc2, pmb->ncc1,
               (pmb->pmy_mesh->multilevel ? AthenaArray<Real>::DataStatus::allocated :
                AthenaArray<Real>::DataStatus::empty)),
     empty_flux{AthenaArray<Real>(), AthenaArray<Real>(), AthenaArray<Real>()},
     output_defect(false), crbvar(pmb, &ecr, &coarse_ecr, empty_flux, false),
     refinement_idx_(), 
-    Dpara(NECR), Dperp(NECR), Lambda(NECR),NECRbin_() {
+    Dpara(pin->GetInteger("crdiffusion", "NECRbin")), Dperp(pin->GetInteger("crdiffusion", "NECRbin")), 
+    Lambda(pin->GetInteger("crdiffusion", "NECRbin")),NECRbin_() {
   //Dpara_ = pin->GetReal("crdiffusion", "Dpara");
   //Dperp_ = pin->GetReal("crdiffusion", "Dperp");
   //Lambda_ = pin->GetReal("crdiffusion", "Lambda");
-  NECRbin_ = pin->GetReal("crdiffusion", "NECRbin");//the number of cosmic ray bin
+  NECRbin_ = pin->GetInteger("crdiffusion", "NECRbin");//the number of cosmic ray bin
 
   output_defect = pin->GetOrAddBoolean("crdiffusion", "output_defect", false);
   if (output_defect)
-    def.NewAthenaArray(NECR,pmb->ncells3, pmb->ncells2, pmb->ncells1);
+    def.NewAthenaArray(NECRbin_,pmb->ncells3, pmb->ncells2, pmb->ncells1);
 
   pmb->RegisterMeshBlockData(ecr);
   // "Enroll" in S/AMR by adding to vector of tuples of pointers in MeshRefinement class
@@ -87,6 +89,7 @@ void CRDiffusion::CalculateCoefficients(const AthenaArray<Real> &w,
   if (pmy_block->pmy_mesh->f3)
     kl -= NGHOST, ku += NGHOST;
   //Real Dpara = Dpara_, Dperp = Dperp_, Lambda = Lambda_;
+  Real NECRbin = NECRbin_;
 
   if (MAGNETIC_FIELDS_ENABLED) {
     for (int n=0; n <= NECRbin; ++n){

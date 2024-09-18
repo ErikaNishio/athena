@@ -227,11 +227,17 @@ void MeshBlock::ProblemGenerator(ParameterInput *pin) {
       }
     }
   }
-
-  for(int k=ks; k<=ke; ++k) {
-    for(int j=js; j<=je; ++j) {
-      for(int i=is; i<=ie; ++i)
-        pcrdiff->ecr(k,j,i) = 1.0;
+  //n個のec,D,Lを入れる
+  int NECRbin = pin->GetReal("crdiffusion", "NECRbin");
+  for (int n=0; n<=NECRbin; n++){
+    pcrdiff->Dpara(n) = 100.0;
+    pcrdiff->Dperp(n) = 1.0;
+    pcrdiff->Lambda(n) = 5.0;
+    for(int k=ks; k<=ke; ++k) {
+      for(int j=js; j<=je; ++j) {
+        for(int i=is; i<=ie; ++i)
+          pcrdiff->ecr(n,k,j,i) = 1.0;
+      }
     }
   }
 
