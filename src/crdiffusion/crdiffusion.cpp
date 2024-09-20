@@ -33,22 +33,21 @@
 //! \fn CRDiffusion::CRDiffusion(MeshBlock *pmb, ParameterInput *pin)
 //! \brief CRDiffusion constructor
 CRDiffusion::CRDiffusion(MeshBlock *pmb, ParameterInput *pin) :
-    pmy_block(pmb), ecr(pmb->ncells3, pmb->ncells2, pmb->ncells1),
-    source(pmb->ncells3, pmb->ncells2, pmb->ncells1),
-    coeff(NCOEFF, pmb->ncells3, pmb->ncells2, pmb->ncells1),
-    coarse_ecr(pmb->ncc3, pmb->ncc2, pmb->ncc1,
+    pmy_block(pmb), NECRbin(pin->GetOrAddInteger("crdiffusion", "NECRbin", 1)),
+    ecr(NECRbin, pmb->ncells3, pmb->ncells2, pmb->ncells1),
+    source(NECRbin, pmb->ncells3, pmb->ncells2, pmb->ncells1),
+    zeta(pmb->ncells3, pmb->ncells2, pmb->ncells1),
+    coeff(NECRbin, NCOEFF, pmb->ncells3, pmb->ncells2, pmb->ncells1),
+    coarse_ecr(NECRbin, pmb->ncc3, pmb->ncc2, pmb->ncc1,
               (pmb->pmy_mesh->multilevel ? AthenaArray<Real>::DataStatus::allocated :
                AthenaArray<Real>::DataStatus::empty)),
     empty_flux{AthenaArray<Real>(), AthenaArray<Real>(), AthenaArray<Real>()},
     output_defect(false), crbvar(pmb, &ecr, &coarse_ecr, empty_flux, false),
-    refinement_idx_(), Dpara_(), Dperp_(), Lambda_() {
-  Dpara_ = pin->GetReal("crdiffusion", "Dpara");
-  Dperp_ = pin->GetReal("crdiffusion", "Dperp");
-  Lambda_ = pin->GetReal("crdiffusion", "Lambda");
-
+    refinement_idx_(), Dpara(NECRbin), Dperp(NECRbin), Lambda(NECRbin),
+    zeta_factor(NECRbin) {
   output_defect = pin->GetOrAddBoolean("crdiffusion", "output_defect", false);
   if (output_defect)
-    def.NewAthenaArray(pmb->ncells3, pmb->ncells2, pmb->ncells1);
+    def.NewAthenaArray(NECRbin,pmb->ncells3, pmb->ncells2, pmb->ncells1);
 
   pmb->RegisterMeshBlockData(ecr);
   // "Enroll" in S/AMR by adding to vector of tuples of pointers in MeshRefinement class
@@ -84,34 +83,39 @@ void CRDiffusion::CalculateCoefficients(const AthenaArray<Real> &w,
     jl -= NGHOST, ju += NGHOST;
   if (pmy_block->pmy_mesh->f3)
     kl -= NGHOST, ku += NGHOST;
-  Real Dpara = Dpara_, Dperp = Dperp_, Lambda = Lambda_;
+  //Real Dpara = Dpara_, Dperp = Dperp_, Lambda = Lambda_;
 
   if (MAGNETIC_FIELDS_ENABLED) {
-    for (int k = kl; k <= ku; ++k) {
-      for (int j = jl; j <= ju; ++j) {
-        for (int i = il; i <= iu; ++i) {
-          const Real &bx = bcc(IB1,k,j,i);
-          const Real &by = bcc(IB2,k,j,i);
-          const Real &bz = bcc(IB3,k,j,i);
-          Real ba = std::sqrt(SQR(bx) + SQR(by) + SQR(bz) + TINY_NUMBER);
-          Real nx = bx / ba, ny = by / ba, nz = bz / ba;
-          coeff(DXX,k,j,i) = Dperp + (Dpara - Dperp) * nx * nx;
-          coeff(DXY,k,j,i) =         (Dpara - Dperp) * nx * ny;
-          coeff(DXZ,k,j,i) =         (Dpara - Dperp) * nx * nz;
-          coeff(DYY,k,j,i) = Dperp + (Dpara - Dperp) * ny * ny;
-          coeff(DYZ,k,j,i) =         (Dpara - Dperp) * ny * nz;
-          coeff(DZZ,k,j,i) = Dperp + (Dpara - Dperp) * nz * nz;
-          coeff(NLAMBDA, k,j,i) = Lambda * w(IDN,k,j,i);
+    for (int n=0; n < NECRbin; ++n){
+      for (int k = kl; k <= ku; ++k) {
+        for (int j = jl; j <= ju; ++j) {
+          for (int i = il; i <= iu; ++i) {
+            const Real &bx = bcc(IB1,k,j,i);
+            const Real &by = bcc(IB2,k,j,i);
+            const Real &bz = bcc(IB3,k,j,i);
+            Real ba = std::sqrt(SQR(bx) + SQR(by) + SQR(bz) + TINY_NUMBER);
+            Real nx = bx / ba, ny = by / ba, nz = bz / ba;
+            coeff(n,DXX,k,j,i) = Dperp(n) + (Dpara(n)  - Dperp(n) ) * nx * nx;
+            coeff(n,DXY,k,j,i) =         (Dpara(n)  - Dperp(n) ) * nx * ny;
+            coeff(n,DXZ,k,j,i) =         (Dpara(n)  - Dperp(n) ) * nx * nz;
+            coeff(n,DYY,k,j,i) = Dperp(n)  + (Dpara(n)  - Dperp(n) ) * ny * ny;
+            coeff(n,DYZ,k,j,i) =         (Dpara(n)  - Dperp(n) ) * ny * nz;
+            coeff(n,DZZ,k,j,i) = Dperp(n)  + (Dpara(n)  - Dperp(n)) * nz * nz;
+            coeff(n,NLAMBDA, k,j,i) = Lambda(n)  * w(IDN,k,j,i);
+          }
         }
       }
     }
   } else {
-    for (int k = kl; k <= ku; ++k) {
-      for (int j = jl; j <= ju; ++j) {
-        for (int i = il; i <= iu; ++i) {
-          coeff(DXX,k,j,i) = coeff(DXY,k,j,i) = coeff(DXZ,k,j,i) = coeff(DYY,k,j,i)
-                           = coeff(DYZ,k,j,i) = coeff(DZZ,k,j,i) = Dpara;
-          coeff(NLAMBDA, k,j,i) = Lambda * w(IDN,k,j,i);
+    for (int n=0; n < NECRbin; ++n){
+      for (int k = kl; k <= ku; ++k) {
+        for (int j = jl; j <= ju; ++j) {
+          for (int i = il; i <= iu; ++i) {
+            coeff(n,DXX,k,j,i) = coeff(n,DXY,k,j,i) = coeff(n,DXZ,k,j,i)
+                               = coeff(n,DYY,k,j,i) = coeff(n,DYZ,k,j,i)
+                               = coeff(n,DZZ,k,j,i) = Dpara(n);
+            coeff(n,NLAMBDA, k,j,i) = Lambda(n) * w(IDN,k,j,i);
+          }
         }
       }
     }
@@ -120,4 +124,30 @@ void CRDiffusion::CalculateCoefficients(const AthenaArray<Real> &w,
   return;
 }
 
+//----------------------------------------------------------------------------------------
+//! \fn void CRDiffusion::CalculateIonizationRate(const AthenaArray<Real> &w)
+//! \brief Calculate Ionization Rate from the Cosmic-ray density
+void CRDiffusion::CalculateIonizationRate(const AthenaArray<Real> &w) {
+  int il = pmy_block->is - NGHOST, iu = pmy_block->ie + NGHOST;
+  int jl = pmy_block->js, ju = pmy_block->je;
+  int kl = pmy_block->ks, ku = pmy_block->ke;
+  if (pmy_block->pmy_mesh->f2)
+    jl -= NGHOST, ju += NGHOST;
+  if (pmy_block->pmy_mesh->f3)
+    kl -= NGHOST, ku += NGHOST;
+  for (int n = 0; n < NECRbin; n++){
+    for (int k = kl; k <= ku; ++k) {
+      for (int j = jl; j <= ju; ++j) {
+        for (int i = il; i <= iu; ++i)
+          //zeta(k, j, i) += zeta_factor(n)* Lambda(n)* ecr(n, k, j, i);
+          //zeta_factor = E_k/v*k/cross_section
+          if(ecr(n, k, j, i) == 0.0){
+            //printf("%e\n",ecr(n, k, j, i));
+          }
+      }
+    }
+  }
+
+  return;
+}
 

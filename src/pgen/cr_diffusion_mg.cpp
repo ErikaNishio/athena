@@ -176,7 +176,7 @@ void MeshBlock::ProblemGenerator(ParameterInput *pin) {
       for (int i=is; i<=ie; ++i) {
         Real x1 = pcoord->x1v(i);
         Real r2 = SQR(x1)+SQR(x2)+SQR(x3);
-        phydro->u(IDN,k,j,i) = 1.0;//rho0/std::min(r2,r0*r0);
+        phydro->u(IDN,k,j,i) = rho0/std::min(r2,r0*r0);
         phydro->u(IM1,k,j,i) = 0.0;
         phydro->u(IM2,k,j,i) = 0.0;
         phydro->u(IM3,k,j,i) = 0.0;
@@ -228,10 +228,20 @@ void MeshBlock::ProblemGenerator(ParameterInput *pin) {
     }
   }
 
-  for(int k=ks; k<=ke; ++k) {
-    for(int j=js; j<=je; ++j) {
-      for(int i=is; i<=ie; ++i)
-        pcrdiff->ecr(k,j,i) = 1.0;
+  //n個のec,D,Lを入れる
+  int NECRbin = pin->GetReal("crdiffusion", "NECRbin");
+
+  for (int n=0; n < NECRbin; n++){
+    pcrdiff->Dpara(n) = 100.0;
+    pcrdiff->Dperp(n) = 1.0;
+    pcrdiff->Lambda(n) = 5.0;
+    pcrdiff->zeta_factor(n) = 10.0;
+    for(int k=ks; k<=ke; ++k) {
+      for(int j=js; j<=je; ++j) {
+        for(int i=is; i<=ie; ++i){
+          pcrdiff->ecr(n,k,j,i) = 1.0;
+        }
+      }
     }
   }
 

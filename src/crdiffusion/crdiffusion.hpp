@@ -42,7 +42,9 @@ class CRDiffusion {
 
   MeshBlock* pmy_block;
   MGCRDiffusion *pmg;
+  int NECRbin;
   AthenaArray<Real> ecr, source, zeta, coeff;
+  AthenaArray<Real> Dpara,Dperp,Lambda,zeta_factor;
   AthenaArray<Real> coarse_ecr, empty_flux[3];
   AthenaArray<Real> def;   // defect from the Multigrid solver
   bool output_defect;
@@ -51,12 +53,12 @@ class CRDiffusion {
 
   void CalculateCoefficients(const AthenaArray<Real> &w,
                              const AthenaArray<Real> &bcc);
+  void CalculateIonizationRate(const AthenaArray<Real> &w);
 
   friend class MGCRDiffusuionDriver;
 
  private:
   int refinement_idx_;
-  Real Dpara_, Dperp_, Lambda_;
 };
 
 #endif // CRDIFFUSION_CRDIFFUSION_HPP_

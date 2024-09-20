@@ -55,7 +55,7 @@ MGBoundaryValues::MGBoundaryValues(Multigrid *pmg, BoundaryFlag *input_bcs)
   if (pmy_mg_->pmy_block_ != nullptr) {
     InitBoundaryData(BoundaryQuantity::mg);
     int nc = block_size_.nx1 + 2*pmy_mg_->ngh_;
-    int nv = std::max(pmy_mg_->nvar_, pmy_mg_->ncoeff_);
+    int nv = std::max(pmy_mg_->nvar_, pmy_mg_->ncoeff_*pmy_mg_->nvar_);
     cbuf_.NewAthenaArray(nv, nc, nc, nc);
     cbufold_.NewAthenaArray(nv, nc, nc, nc);
     for (int i = 0; i < 6; ++i) {
@@ -117,7 +117,8 @@ void MGBoundaryValues::InitBoundaryData(BoundaryQuantity type) {
           size += ngh*ngh*ngh;
       }
 
-      size *= std::max(pmy_mg_->nvar_*(1+pmy_mg_->pmy_driver_->ffas_), pmy_mg_->ncoeff_);
+      size *= std::max(pmy_mg_->nvar_*(1+pmy_mg_->pmy_driver_->ffas_), 
+                       pmy_mg_->nvar_*pmy_mg_->ncoeff_);
 
       bdata_[c].send[n] = new Real[size];
       bdata_[c].recv[n] = new Real[size];
@@ -382,7 +383,7 @@ void MGBoundaryValues::ApplyPhysicalBoundaries(int flag, bool fcoeff) {
     else if (flag == 1) u = &cbuf_,                       c = &(pmy_mg_->ccoord_[lev]);
     else                u = &cbufold_,                    c = &(pmy_mg_->ccoord_[lev]);
   } else {
-    nvar = pmy_mg_->ncoeff_;
+    nvar = pmy_mg_->nvar_*pmy_mg_->ncoeff_;
     if (flag == 0)
       u = &(pmy_mg_->GetCurrentCoefficient()), c = &(pmy_mg_->coord_[lev]);
     else
@@ -442,7 +443,7 @@ void MGBoundaryValues::StartReceivingMultigrid(BoundaryQuantity type, bool foldd
 #ifdef MPI_PARALLEL
   int nvar = pmy_mg_->nvar_, ngh = pmy_mg_->ngh_, cngh = ngh;
   int nc = pmy_mg_->GetCurrentNumberOfCells();
-  if (type == BoundaryQuantity::mg_coeff) nvar = pmy_mg_->ncoeff_;
+  if (type == BoundaryQuantity::mg_coeff) nvar = pmy_mg_->nvar_*pmy_mg_->ncoeff_;
 
   for (int n = 0; n < nneighbor; ++n) {
     NeighborBlock& nb = neighbor[n];
@@ -522,7 +523,7 @@ int MGBoundaryValues::LoadMultigridBoundaryBufferSameLevel(Real *buf,
   if (!fcoeff) {
     t = &(pmy_mg_->GetCurrentData());
   } else {
-    nvar = pmy_mg_->ncoeff_;
+    nvar = pmy_mg_->nvar_*pmy_mg_->ncoeff_;
     t = &(pmy_mg_->GetCurrentCoefficient());
   }
   const AthenaArray<Real> &u = *t;
@@ -604,7 +605,7 @@ int MGBoundaryValues::LoadMultigridBoundaryBufferToCoarser(Real *buf,
   if (!fcoeff) {
     t = &(pmy_mg_->GetCurrentData());
   } else {
-    nvar = pmy_mg_->ncoeff_;
+    nvar = pmy_mg_->nvar_*pmy_mg_->ncoeff_;
     t = &(pmy_mg_->GetCurrentCoefficient());
   }
   const AthenaArray<Real> &u = *t;
@@ -671,7 +672,7 @@ int MGBoundaryValues::LoadMultigridBoundaryBufferToFiner(Real *buf,
   if (!fcoeff) {
     t = &(pmy_mg_->GetCurrentData());
   } else {
-    nvar = pmy_mg_->ncoeff_;
+    nvar = pmy_mg_->nvar_*pmy_mg_->ncoeff_;
     t = &(pmy_mg_->GetCurrentCoefficient());
   }
   const AthenaArray<Real> &u = *t;
@@ -788,7 +789,7 @@ void MGBoundaryValues::SetMultigridBoundarySameLevel(const Real *buf,
   if (!fcoeff) {
     t = &(pmy_mg_->GetCurrentData());
   } else {
-    nvar = pmy_mg_->ncoeff_;
+    nvar = pmy_mg_->nvar_*pmy_mg_->ncoeff_;
     t = &(pmy_mg_->GetCurrentCoefficient());
   }
   AthenaArray<Real> &dst = *t;
@@ -850,7 +851,7 @@ void MGBoundaryValues::SetMultigridBoundaryFromCoarser(const Real *buf,
                                    const NeighborBlock& nb, bool folddata, bool fcoeff) {
   int nc = pmy_mg_->GetCurrentNumberOfCells();
   int ngh = pmy_mg_->ngh_, nvar = pmy_mg_->nvar_;
-  if (fcoeff) nvar = pmy_mg_->ncoeff_;
+  if (fcoeff) nvar = pmy_mg_->nvar_*pmy_mg_->ncoeff_;
   int si, sj, sk, ei, ej, ek;
   int cng = 1;
   int cs = cng, ce = cng + nc/2 -1;
@@ -907,7 +908,7 @@ void MGBoundaryValues::SetMultigridBoundaryFromFiner(const Real *buf,
   if (!fcoeff) {
     t = &(pmy_mg_->GetCurrentData());
   } else {
-    nvar = pmy_mg_->ncoeff_;
+    nvar = pmy_mg_->nvar_*pmy_mg_->ncoeff_;
     t = &(pmy_mg_->GetCurrentCoefficient());
   }
   AthenaArray<Real> &dst = *t;
@@ -1053,7 +1054,7 @@ void MGBoundaryValues::ProlongateMultigridBoundaries(bool folddata, bool fcoeff)
   if (!fcoeff) {
     t = &(pmy_mg_->GetCurrentData());
   } else {
-    nvar = pmy_mg_->ncoeff_;
+    nvar = pmy_mg_->nvar_*pmy_mg_->ncoeff_;
     t = &(pmy_mg_->GetCurrentCoefficient());
   }
   AthenaArray<Real> &dst = *t;

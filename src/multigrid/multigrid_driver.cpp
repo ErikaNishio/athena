@@ -73,7 +73,7 @@ MultigridDriver::MultigridDriver(Mesh *pm, MGBoundaryFunc *MGBoundary,
   }
 
   ranklist_  = new int[nbtotal_];
-  int nv = std::max(nvar_*2, ncoeff_);
+  int nv = std::max(nvar_*2, nvar_*ncoeff_);
   rootbuf_ = new Real[nbtotal_*nv];
   for (int n = 0; n < nbtotal_; ++n)
     ranklist_[n] = pmy_mesh_->ranklist[n];
@@ -109,7 +109,7 @@ MultigridDriver::MultigridDriver(Mesh *pm, MGBoundaryFunc *MGBoundary,
     cbuf_ = new AthenaArray<Real>[nth];
     cbufold_ = new AthenaArray<Real>[nth];
     ncoarse_ = new AthenaArray<bool>[nth];
-    nv = std::max(nvar_, ncoeff_);
+    nv = std::max(nvar_, nvar_*ncoeff_);
     for (int n = 0; n < nth; ++n) {
       cbuf_[n].NewAthenaArray(nv,3,3,3);
       cbufold_[n].NewAthenaArray(nv,3,3,3);
@@ -161,9 +161,9 @@ void MGOctet::Allocate(int nvar, int ncoct, int nccoct, int ncoeff, int nmatrix)
   def.NewAthenaArray(nvar, ncoct, ncoct, ncoct);
   src.NewAthenaArray(nvar, ncoct, ncoct, ncoct);
   if (ncoeff > 0)
-    coeff.NewAthenaArray(ncoeff, ncoct, ncoct, ncoct);
+    coeff.NewAthenaArray(nvar, ncoeff, ncoct, ncoct, ncoct);
   if (nmatrix > 0)
-    matrix.NewAthenaArray(nmatrix, ncoct, ncoct, ncoct);
+    matrix.NewAthenaArray(nvar, nmatrix, ncoct, ncoct, ncoct);
   coord.AllocateMGCoordinates(ncoct, ncoct, ncoct);
   ccoord.AllocateMGCoordinates(nccoct, nccoct, nccoct);
   return;
@@ -446,7 +446,7 @@ void MultigridDriver::SetupMultigrid(Real dt, bool ftrivial) {
         delete [] ranklist_;
         delete [] rootbuf_;
         ranklist_ = new int[pmy_mesh_->nbtotal];
-        int nv = std::max(nvar_*2, ncoeff_);
+        int nv = std::max(nvar_*2, nvar_*ncoeff_);
         rootbuf_ = new Real[pmy_mesh_->nbtotal*nv];
       }
       nbtotal_ = pmy_mesh_->nbtotal;
@@ -476,8 +476,8 @@ void MultigridDriver::SetupMultigrid(Real dt, bool ftrivial) {
     }
     if (ncoeff_ > 0) {
       for (int n = 0; n < nranks_; ++n) {
-        nclist_[n]  = nblist_[n]*ncoeff_;
-        ncslist_[n] = nslist_[n]*ncoeff_;
+        nclist_[n]  = nblist_[n]*nvar_*ncoeff_;
+        ncslist_[n] = nslist_[n]*nvar_*ncoeff_;
       }
     }
     for (Multigrid* pmg : vmg_) {
@@ -556,7 +556,7 @@ void MultigridDriver::SetupCoefficients() {
         int oj = (static_cast<int>(loc.lx2) & 1) + ngh;
         int ok = (static_cast<int>(loc.lx3) & 1) + ngh;
         MGOctet &coct = octets_[l-1][oid];
-        for (int v = 0; v < ncoeff_; ++v)
+        for (int v = 0; v < nvar_*ncoeff_; ++v)
           coct.coeff(v, ok, oj, oi) = RestrictOne(foct.coeff, v, ngh, ngh, ngh);
       }
     }
@@ -567,7 +567,7 @@ void MultigridDriver::SetupCoefficients() {
       int lx1 = static_cast<int>(loc.lx1) + mgroot_->ngh_;
       int lx2 = static_cast<int>(loc.lx2) + mgroot_->ngh_;
       int lx3 = static_cast<int>(loc.lx3) + mgroot_->ngh_;
-      for (int v = 0; v < ncoeff_; ++v)
+      for (int v = 0; v < nvar_*ncoeff_; ++v)
         mgroot_->coeff_[mgroot_->nlevel_-1](v, lx3, lx2, lx1)
           = RestrictOne(oct.coeff, v, ngh, ngh, ngh);
     }
@@ -730,16 +730,17 @@ void MultigridDriver::TransferCoefficientFromBlocksToRoot() {
 #pragma omp parallel for num_threads(nthreads_)
   for (auto itr = vmg_.begin(); itr < vmg_.end(); itr++) {
     Multigrid *pmg = *itr;
-    for (int v = 0; v < ncoeff_; ++v)
-      rootbuf_[pmg->pmy_block_->gid*ncoeff_+v]=pmg->GetCoarsestData(MGVariable::coeff, v);
+    for (int v = 0; v < nvar_*ncoeff_; ++v)
+      rootbuf_[pmg->pmy_block_->gid*nvar_*ncoeff_+v]
+        = pmg->GetCoarsestData(MGVariable::coeff, v);
   }
 
 #ifdef MPI_PARALLEL
   if (nb_rank_ > 0) // every rank has the same number of MeshBlocks
-    MPI_Allgather(MPI_IN_PLACE, nb_rank_*ncoeff_, MPI_ATHENA_REAL,
-                  rootbuf_, nb_rank_*ncoeff_, MPI_ATHENA_REAL, MPI_COMM_MULTIGRID);
+    MPI_Allgather(MPI_IN_PLACE, nb_rank_*nvar_*ncoeff_, MPI_ATHENA_REAL,
+                  rootbuf_, nb_rank_*nvar_*ncoeff_, MPI_ATHENA_REAL, MPI_COMM_MULTIGRID);
   else
-    MPI_Allgatherv(MPI_IN_PLACE, nblist_[Globals::my_rank]*ncoeff_, MPI_ATHENA_REAL,
+    MPI_Allgatherv(MPI_IN_PLACE, nblist_[Globals::my_rank]*nvar_*ncoeff_, MPI_ATHENA_REAL,
                    rootbuf_, nclist_, ncslist_, MPI_ATHENA_REAL, MPI_COMM_MULTIGRID);
 #endif
 
@@ -750,8 +751,8 @@ void MultigridDriver::TransferCoefficientFromBlocksToRoot() {
     int j = static_cast<int>(loc.lx2);
     int k = static_cast<int>(loc.lx3);
     if (loc.level == locrootlevel_) {
-      for (int v = 0; v < ncoeff_; ++v)
-        mgroot_->SetData(MGVariable::coeff, v, k, j, i, rootbuf_[n*ncoeff_+v]);
+      for (int v = 0; v < nvar_*ncoeff_; ++v)
+        mgroot_->SetData(MGVariable::coeff, v, k, j, i, rootbuf_[n*nvar_*ncoeff_+v]);
     } else {
       LogicalLocation oloc;
       oloc.lx1 = (loc.lx1 >> 1);
@@ -764,8 +765,8 @@ void MultigridDriver::TransferCoefficientFromBlocksToRoot() {
       int oj = (j&1) + ngh;
       int ok = (k&1) + ngh;
       MGOctet &oct = octets_[olev][oid];
-      for (int v = 0; v < ncoeff_; ++v)
-        oct.coeff(v,ok,oj,oi) = rootbuf_[n*ncoeff_+v];
+      for (int v = 0; v < nvar_*ncoeff_; ++v)
+        oct.coeff(v,ok,oj,oi) = rootbuf_[n*nvar_*ncoeff_+v];
     }
   }
 
@@ -1575,7 +1576,7 @@ void MultigridDriver::SetBoundariesOctets(bool fprolong, bool folddata, bool fco
                                         cbuf, cbufold, nvar_, ox1, ox2, ox3, folddata);
             else
               SetOctetBoundarySameLevel(oct.coeff, noct.coeff, oct.uold, noct.uold,
-                                        cbuf, cbufold, ncoeff_, ox1, ox2, ox3, false);
+                              cbuf, cbufold, nvar_*ncoeff_, ox1, ox2, ox3, false);
           } else if (!fprolong) { // on the coarser level
             // note: prolongation requires neighbors on the same level only
             ncoarse(ox3+1, ox2+1, ox1+1) = true;
@@ -1592,7 +1593,7 @@ void MultigridDriver::SetBoundariesOctets(bool fprolong, bool folddata, bool fco
                                             nvar_, loc, ox1, ox2, ox3, false);
               else
                 SetOctetBoundaryFromCoarser(coct.coeff, coct.coeff, cbuf, cbufold,
-                                            ncoeff_, loc, ox1, ox2, ox3, false);
+                                            nvar_*ncoeff_, loc, ox1, ox2, ox3, false);
             } else { // from root
               if (!fcoeff) {
                 const AthenaArray<Real> &un = mgroot_->GetCurrentData();
@@ -1602,7 +1603,7 @@ void MultigridDriver::SetBoundariesOctets(bool fprolong, bool folddata, bool fco
               } else {
                 const AthenaArray<Real> &un = mgroot_->GetCurrentCoefficient();
                 SetOctetBoundaryFromCoarser(un, un, cbuf, cbufold,
-                                            ncoeff_, nloc, ox1, ox2, ox3, false);
+                                            nvar_*ncoeff_, nloc, ox1, ox2, ox3, false);
               }
             }
           }
@@ -1618,7 +1619,7 @@ void MultigridDriver::SetBoundariesOctets(bool fprolong, bool folddata, bool fco
       ApplyPhysicalBoundariesOctet(oct.u, loc, oct.coord, false, false);
     } else {
       ApplyPhysicalBoundariesOctet(cbuf, loc, oct.ccoord, true, true);
-      ProlongateOctetBoundaries(oct.coeff, oct.uold, cbuf, cbufold, ncoeff_,
+      ProlongateOctetBoundaries(oct.coeff, oct.uold, cbuf, cbufold, nvar_*ncoeff_,
                                 ncoarse, false);
       ApplyPhysicalBoundariesOctet(oct.u, loc, oct.coord, false, true);
     }

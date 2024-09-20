@@ -140,9 +140,9 @@ Multigrid::Multigrid(MultigridDriver *pmd, MeshBlock *pmb, int nghost) :
     coord_[l].AllocateMGCoordinates(ncx,ncy,ncz);
     coord_[l].CalculateMGCoordinates(size_, ll, ngh_);
     if (ncoeff_ > 0)
-      coeff_[l].NewAthenaArray(ncoeff_,ncz,ncy,ncx);
+      coeff_[l].NewAthenaArray(nvar_,ncoeff_,ncz,ncy,ncx);
     if (nmatrix_ > 0)
-      matrix_[l].NewAthenaArray(nmatrix_,ncz,ncy,ncx);
+      matrix_[l].NewAthenaArray(nvar_,nmatrix_,ncz,ncy,ncx);
     ncx=(size_.nx1>>(ll+1))+2*ngh_;
     ncy=(size_.nx2>>(ll+1))+2*ngh_;
     ncz=(size_.nx3>>(ll+1))+2*ngh_;
@@ -250,15 +250,17 @@ void Multigrid::LoadCoefficients(const AthenaArray<Real> &coeff, int ngh) {
   int is, ie, js, je, ks, ke;
   is=js=ks=0;
   ie=size_.nx1+2*ngh_-1, je=size_.nx2+2*ngh_-1, ke=size_.nx3+2*ngh_-1;
-  for (int v = 0; v < ncoeff_; ++v) {
-    for (int mk=ks; mk<=ke; ++mk) {
-      int k = mk + ngh - ngh_;
-      for (int mj=js; mj<=je; ++mj) {
-        int j = mj + ngh - ngh_;
-#pragma omp simd
-        for (int mi=is; mi<=ie; ++mi) {
-          int i = mi + ngh - ngh_;
-          cm(v,mk,mj,mi) = coeff(v,k,j,i);
+  for (int n = 0; n < nvar_ ; ++n){
+    for (int v = 0; v < ncoeff_; ++v) {
+      for (int mk=ks; mk<=ke; ++mk) {
+        int k = mk + ngh - ngh_;
+        for (int mj=js; mj<=je; ++mj) {
+          int j = mj + ngh - ngh_;
+  #pragma omp simd
+          for (int mi=is; mi<=ie; ++mi) {
+            int i = mi + ngh - ngh_;
+            cm(n,v,mk,mj,mi) = coeff(n,v,k,j,i);
+          }
         }
       }
     }
@@ -312,7 +314,7 @@ void Multigrid::RestrictCoefficients() {
   for (int lev = nlevel_ - 1; lev > 0; lev--) {
     int ll = nlevel_ - lev;
     ie=is+(size_.nx1>>ll)-1, je=js+(size_.nx2>>ll)-1, ke=ks+(size_.nx3>>ll)-1;
-    Restrict(coeff_[lev-1], coeff_[lev], ncoeff_, is, ie, js, je, ks, ke, false);
+    Restrict(coeff_[lev-1], coeff_[lev], nvar_*ncoeff_, is, ie, js, je, ks, ke, false);
   }
   return;
 }
@@ -326,6 +328,8 @@ void Multigrid::RetrieveResult(AthenaArray<Real> &dst, int ns, int ngh) {
   const AthenaArray<Real> &src=u_[nlevel_-1];
   int sngh=std::min(ngh_,ngh);
   int ie=size_.nx1+ngh_+sngh-1, je=size_.nx2+ngh_+sngh-1, ke=size_.nx3+ngh_+sngh-1;
+
+  //printf("%e,%e\n",dst(1,5,6,7),src(1,5,6,7));
   for (int v=0; v<nvar_; ++v) {
     int ndst=ns+v;
     for (int mk=ngh_-sngh; mk<=ke; ++mk) {

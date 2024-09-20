@@ -1149,19 +1149,23 @@ void OutputType::LoadOutputData(MeshBlock *pmb) {
     if (ContainVariable(output_params.variable, "ecr") ||
         ContainVariable(output_params.variable, "prim") ||
         ContainVariable(output_params.variable, "cons")) {
-      pod = new OutputData;
-      pod->type = "SCALARS";
-      pod->name = "ecr";
-      pod->data.InitWithShallowSlice(pcrdiff->ecr,4,0,1);
-      AppendOutputDataNode(pod);
-      num_vars_++;
-      if (pcrdiff->output_defect) {
+      for (int i = 0; i < pcrdiff->NECRbin; ++i) {
         pod = new OutputData;
         pod->type = "SCALARS";
-        pod->name = "defect-ecr";
-        pod->data.InitWithShallowSlice(pcrdiff->def, 4, 0, 1);
+        pod->name = "ecr" + std::to_string(i);
+        pod->data.InitWithShallowSlice(pcrdiff->ecr, 4, i, 1);
         AppendOutputDataNode(pod);
         num_vars_++;
+      }
+      if (pcrdiff->output_defect) {
+        for (int i = 0; i < pcrdiff->NECRbin; ++i) {
+          pod = new OutputData;
+          pod->type = "SCALARS";
+          pod->name = "defect-ecr" + std::to_string(i);
+          pod->data.InitWithShallowSlice(pcrdiff->def, 4, i, 1);
+          AppendOutputDataNode(pod);
+          num_vars_++;
+        }
       }
     }
     if (ContainVariable(output_params.variable, "zeta") ||
