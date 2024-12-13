@@ -38,12 +38,15 @@ CRDiffusion::CRDiffusion(MeshBlock *pmb, ParameterInput *pin) :
     source(NECRbin, pmb->ncells3, pmb->ncells2, pmb->ncells1),
     zeta(pmb->ncells3, pmb->ncells2, pmb->ncells1),
     coeff(NECRbin, NCOEFF, pmb->ncells3, pmb->ncells2, pmb->ncells1),
+    Dpara(NECRbin, pmb->ncells3, pmb->ncells2, pmb->ncells1), 
+    Dperp(NECRbin, pmb->ncells3, pmb->ncells2, pmb->ncells1), 
+    Lambda(NECRbin),
     coarse_ecr(NECRbin, pmb->ncc3, pmb->ncc2, pmb->ncc1,
               (pmb->pmy_mesh->multilevel ? AthenaArray<Real>::DataStatus::allocated :
                AthenaArray<Real>::DataStatus::empty)),
     empty_flux{AthenaArray<Real>(), AthenaArray<Real>(), AthenaArray<Real>()},
     output_defect(false), crbvar(pmb, &ecr, &coarse_ecr, empty_flux, false),
-    refinement_idx_(), Dpara(NECRbin), Dperp(NECRbin), Lambda(NECRbin),
+    refinement_idx_(), 
     zeta_factor(NECRbin) {
   output_defect = pin->GetOrAddBoolean("crdiffusion", "output_defect", false);
   if (output_defect)
@@ -95,12 +98,12 @@ void CRDiffusion::CalculateCoefficients(const AthenaArray<Real> &w,
             const Real &bz = bcc(IB3,k,j,i);
             Real ba = std::sqrt(SQR(bx) + SQR(by) + SQR(bz) + TINY_NUMBER);
             Real nx = bx / ba, ny = by / ba, nz = bz / ba;
-            coeff(n,DXX,k,j,i) = Dperp(n) + (Dpara(n)  - Dperp(n) ) * nx * nx;
-            coeff(n,DXY,k,j,i) =         (Dpara(n)  - Dperp(n) ) * nx * ny;
-            coeff(n,DXZ,k,j,i) =         (Dpara(n)  - Dperp(n) ) * nx * nz;
-            coeff(n,DYY,k,j,i) = Dperp(n)  + (Dpara(n)  - Dperp(n) ) * ny * ny;
-            coeff(n,DYZ,k,j,i) =         (Dpara(n)  - Dperp(n) ) * ny * nz;
-            coeff(n,DZZ,k,j,i) = Dperp(n)  + (Dpara(n)  - Dperp(n)) * nz * nz;
+            coeff(n,DXX,k,j,i) = Dperp(n,k,j,i) + (Dpara(n,k,j,i)  - Dperp(n,k,j,i) ) * nx * nx;
+            coeff(n,DXY,k,j,i) =         (Dpara(n,k,j,i)  - Dperp(n,k,j,i) ) * nx * ny;
+            coeff(n,DXZ,k,j,i) =         (Dpara(n,k,j,i)  - Dperp(n,k,j,i) ) * nx * nz;
+            coeff(n,DYY,k,j,i) = Dperp(n,k,j,i)  + (Dpara(n,k,j,i)  - Dperp(n,k,j,i) ) * ny * ny;
+            coeff(n,DYZ,k,j,i) =         (Dpara(n,k,j,i)  - Dperp(n,k,j,i) ) * ny * nz;
+            coeff(n,DZZ,k,j,i) = Dperp(n,k,j,i)  + (Dpara(n,k,j,i)  - Dperp(n,k,j,i)) * nz * nz;
             coeff(n,NLAMBDA, k,j,i) = Lambda(n)  * w(IDN,k,j,i);
           }
         }
@@ -135,18 +138,16 @@ void CRDiffusion::CalculateIonizationRate(const AthenaArray<Real> &w) {
     jl -= NGHOST, ju += NGHOST;
   if (pmy_block->pmy_mesh->f3)
     kl -= NGHOST, ku += NGHOST;
-  for (int n = 0; n < NECRbin; n++){
     for (int k = kl; k <= ku; ++k) {
       for (int j = jl; j <= ju; ++j) {
-        for (int i = il; i <= iu; ++i)
-          //zeta(k, j, i) += zeta_factor(n)* Lambda(n)* ecr(n, k, j, i);
-          //zeta_factor = E_k/v*k/cross_section
-          if(ecr(n, k, j, i) == 0.0){
-            //printf("%e\n",ecr(n, k, j, i));
+        for (int i = il; i <= iu; ++i){
+          zeta(k, j, i) = 0.0;//initizlize
+          for (int n = 0; n < NECRbin; n++){
+            zeta(k, j, i) += zeta_factor(n)* Lambda(n)* ecr(n, k, j, i);//zeta_factor = E_k/v*k/cross_section;
           }
+        }
       }
     }
-  }
 
   return;
 }
