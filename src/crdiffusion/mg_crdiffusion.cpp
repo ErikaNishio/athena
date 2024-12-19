@@ -371,7 +371,7 @@ void MGCRDiffusion::Smooth(AthenaArray<Real> &u, const AthenaArray<Real> &src,
       t = omp_get_thread_num();
 #endif
       AthenaArray<Real> &work = temp[t];
-std::cout << "DEBUG: " << pmy_driver_->fsubtract_average_ << std::endl;
+//std::cout << "DEBUG: " << pmy_driver_->fsubtract_average_ << std::endl;
       for (int n = 0 ; n < nvar_; n++){
         for (int k = kl; k <= ku; k++) {
           for (int j = jl; j <= ju; j++) {
@@ -400,9 +400,6 @@ std::cout << "DEBUG: " << pmy_driver_->fsubtract_average_ << std::endl;
             int c = (color + k + j) & 1;
 #pragma ivdep
             for (int i = il+c; i <= iu; i += 2) {
-              if(matrix(0,CCM,k,j,i) != matrix(1,CCM,k,j,i) or u(0,k,j,i) != u(1,k,j,i)){
-                printf("error : %d %d %d %d: %e,%e,%e,%e\n",rlev,k,j,i,matrix(0,CCM,k,j,i),u(0,k,j,i),matrix(1,CCM,k,j,i),u(1,k,j,i));
-              }
             }
           }
         }

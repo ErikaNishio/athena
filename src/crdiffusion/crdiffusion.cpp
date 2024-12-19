@@ -143,7 +143,7 @@ void CRDiffusion::CalculateIonizationRate(const AthenaArray<Real> &w) {
         for (int i = il; i <= iu; ++i){
           zeta(k, j, i) = 0.0;//initizlize
           for (int n = 0; n < NECRbin; n++){
-            zeta(k, j, i) += zeta_factor(n)* Lambda(n)* ecr(n, k, j, i);//zeta_factor = E_k/v*k/cross_section;
+            zeta(k, j, i) += zeta_factor(n)* ecr(n, k, j, i);//zeta_factor = E_k/v*k/cross_section;
           }
         }
       }
