@@ -74,6 +74,9 @@ namespace {
   Real mass, temp, f, rhocrit, omega, bz, mu, amp,zeta;
 
   AthenaArray<Real> *pecr0,*pEk0,*pD_para0,*pLambda0,*pzeta_factor0;
+
+  Real zeta_normalize;
+  Real zeta_penetration,ecr_penetration;
 }
 
 Real CR_spectra_L(Real E_k){
@@ -134,6 +137,10 @@ Real zeta_factor(Real E_k,Real L_loss,Real Lambda){
 
 }
 
+Real linear_completion(Real x,Real x0,Real x1,Real y0,Real y1){
+  return y0 + (y1 - y0) * (x - x0) / (x1 - x0);
+}
+
 void CR_value_calculation(int nvar){
   AthenaArray<Real> &ecr0 = *pecr0;
   AthenaArray<Real> &Ek0 = *pEk0;
@@ -179,48 +186,94 @@ void CR_value_calculation(int nvar){
   int num = 1000;
   Real dE_k = (10.0 - E_k_start)/(2.0*num);//The maximum value of the integral is taken up to 10 GeV.
 
-  Real e_cr,E_k,E_k_bin_sl,E_k_bin_sr,E_k_sl,E_k_sr;
+  Real e_cr,E_k_bin_c,E_k_bin_sl,E_k_bin_sr,E_k,E_k_sl,E_k_sr;
   Real lambda,loss_fuction,zeta_f;
   Real zeta_all = 0.0;
+  zeta_penetration = 0.0;
+  int p;
   for (int n=0; n < nvar; n++){
     E_k_bin_sl = E_k_min*std::pow(10.0,dE_k_bin*(2.0*n));
     E_k_bin_sr = E_k_min*std::pow(10.0,dE_k_bin*(2.0*n+2.0));
-    Ek = E_k_min*std::pow(10.0,dE_k_bin*(2.0*n+1.0));
-    Ek0(n) = Ek;
-    D_para0(n) = D_para(Ek)/l0/l0*t0;
+    E_k_bin_c = E_k_min*std::pow(10.0,dE_k_bin*(2.0*n+1.0));
+    Ek0(n) = E_k_bin_c;
+    D_para0(n) = D_para(E_k_bin_c)/l0/l0*t0;
 
     //calculate Lambda_unction & zeta_factor
+    //代表値のE_kはセルの大きい方(E_k_bin_sr)で取る
     for(int i=0; i < n_table_end-1; i++){
-      if(Ek_table[i] < Ek && Ek <= Ek_table[i+1]){
-        lambda = pow(10.0,(std::log10(Ek/Ek_table[i])*std::log10(Lambda_table[i])
-                 +std::log10(Ek_table[i+1]/Ek)*std::log10(Lambda_table[i+1]))
-                 /(std::log10(Ek_table[i+1]/Ek_table[i])));
-        loss_fuction = pow(10.0,(std::log10(Ek/Ek_table[i])*std::log10(Loss_function_table[i])
-                 +std::log10(Ek_table[i+1]/Ek)*std::log10(Loss_function_table[i+1]))
-                 /(std::log10(Ek_table[i+1]/Ek_table[i])));
-        zeta_f = zeta_factor(Ek,loss_fuction,lambda);
+      if(Ek_table[i] < E_k_bin_sr && E_k_bin_sr <= Ek_table[i+1]){
+        lambda = pow(10.0,linear_completion(std::log10(E_k_bin_sr),std::log10(Ek_table[i]),std::log10(Ek_table[i+1]),
+        std::log10(Lambda_table[i]),std::log10(Lambda_table[i+1])));
+        loss_fuction = pow(10.0,linear_completion(std::log10(E_k_bin_sr),std::log10(Ek_table[i]),std::log10(Ek_table[i+1]),
+        std::log10(Loss_function_table[i]),std::log10(Loss_function_table[i+1])));
+        zeta_f = zeta_factor(E_k_bin_sr,loss_fuction,lambda);
 
-        Lambda0(n) = lambda/mH2*rho0*t0;//
+        Lambda0(n) = lambda/mH2*rho0*t0;// Lambda*rho = s^{-1}
         zeta_factor0(n) = zeta_f*e0;
+        if(n == nvar-1){
+          p = i;//tableの最後の番号を残す
+        }
         break;
       }
     }
 
     e_cr = 0.0;
-      for(int i = 0; i < num; i++){
-        E_k = E_k_min*std::pow(10.0,dE_k*(2.0*i+1.0));
-        E_k_sl = E_k_min*std::pow(10.0,dE_k*(2.0*i));
-        E_k_sr = E_k_min*std::pow(10.0,dE_k*(2.0*i+2.0));
-        if(E_k_bin_sl < E_k_sl && E_k_sr <= E_k_bin_sr){
-          e_cr += CR_spectra_L(E_k)*(E_k_sr-E_k_sl);
+    Real vk;  
+    int a = 0;
+    for(int i = 0; i < num; i++){
+      E_k = E_k_min*std::pow(10.0,dE_k*(2.0*i+1.0));
+      E_k_sl = E_k_min*std::pow(10.0,dE_k*(2.0*i));
+      E_k_sr = E_k_min*std::pow(10.0,dE_k*(2.0*i+2.0));
+
+      if(E_k_bin_sl < E_k_sl && E_k_sr <= E_k_bin_sr){
+          vk = c*sqrt(1.0 - SQR(931.4941024e6/(931.4941024e6+E_k)));
+          e_cr += (4.0*pi*E_k_sr*CR_spectra_L(E_k_sr)/vk)*(E_k_sr-E_k_sl);
         }else if(E_k_sr > E_k_bin_sr){
-          ecr0(n) = e_cr/e0;
-          zeta_all += ecr0(n)*zeta_factor0(n);
-          break;
+          if(n < nvar-1){
+              ecr0(n) = e_cr/e0;
+              zeta_all += ecr0(n)*zeta_factor0(n);
+              break;
+          }else{
+            if(a == 0){
+              ecr0(n) = e_cr/e0;
+              zeta_all += e_cr/e0*zeta_factor0(n);
+              a += 1;
+            }
+            //透過する電離率を計算する
+            if(Ek_table[p] < E_k_sr && E_k_sr <= Ek_table[p+1]){
+                lambda = pow(10.0,linear_completion(std::log10(E_k_sr),std::log10(Ek_table[p]),std::log10(Ek_table[p+1]),
+                std::log10(Lambda_table[p]),std::log10(Lambda_table[p+1])));
+                loss_fuction = pow(10.0,linear_completion(std::log10(E_k_sr),std::log10(Ek_table[p]),std::log10(Ek_table[p+1]),
+                std::log10(Loss_function_table[p]),std::log10(Loss_function_table[p+1])));
+                zeta_f = zeta_factor(E_k_sr,loss_fuction,lambda);
+                zeta_penetration += (4.0*pi*E_k_sr*CR_spectra_L(E_k_sr)/vk)*(E_k_sr-E_k_sl)
+                *zeta_factor(E_k_bin_sr,loss_fuction,lambda)*e0;
+            }else if(Ek_table[p+1] < E_k_sr && E_k_sr <= Ek_table[p+2]){
+              p += 1;
+              lambda = pow(10.0,linear_completion(std::log10(E_k_sr),std::log10(Ek_table[p]),std::log10(Ek_table[p+1]),
+              std::log10(Lambda_table[p]),std::log10(Lambda_table[p+1])));
+              loss_fuction = pow(10.0,linear_completion(std::log10(E_k_sr),std::log10(Ek_table[p]),std::log10(Ek_table[p+1]),
+              std::log10(Loss_function_table[p]),std::log10(Loss_function_table[p+1])));
+              zeta_f = zeta_factor(E_k_sr,loss_fuction,lambda);
+              zeta_penetration += (4.0*pi*E_k_sr*CR_spectra_L(E_k_sr)/vk)*(E_k_sr-E_k_sl)
+              *zeta_factor(E_k_bin_sr,loss_fuction,lambda)*e0;
+            }
+          }
         }
-      }
-    printf("%e,%e,%e,%e\n",E_k,D_para0(n),Lambda0(n),zeta_all);
+    }
+      printf("%e,%e,%e,%e\n",ecr0(n)*e0,zeta_factor0(n)/e0,ecr0(n)*zeta_factor0(n),zeta_all);
   }
+    zeta_all += zeta_penetration;
+
+    //規格化
+    zeta_normalize = 1e-16;
+    zeta_penetration = zeta_penetration/zeta_all*zeta_normalize;
+    Real zeta_all2 = zeta_penetration;
+    for (int n=0; n < nvar; n++){
+      ecr0(n) = ecr0(n)/zeta_all*zeta_normalize;
+      zeta_all2 += ecr0(n)*zeta_factor0(n);
+      printf("%e,%e,%e,%e,%d\n",zeta_penetration,zeta_factor0(n)/e0,ecr0(n)*zeta_factor0(n),zeta_all2,n);
+    }
 }
 
 
@@ -384,7 +437,8 @@ void Mesh::InitUserMeshData(ParameterInput *pin) {
 
 void MeshBlock::ProblemGenerator(ParameterInput *pin) {
   Real gamma = peos->GetGamma();
-  Real r0 = 1e-3, rho = 1e-13/rho0;
+  Real r0=30.0*au/l0, rho = 1e-11/rho0;
+  printf("%e,%e\n",r0,rho);
 
   for(int k=ks; k<=ke; ++k) {
     Real x3 = pcoord->x3v(k);
@@ -393,7 +447,7 @@ void MeshBlock::ProblemGenerator(ParameterInput *pin) {
       for (int i=is; i<=ie; ++i) {
         Real x1 = pcoord->x1v(i);
         Real r2 = SQR(x1)+SQR(x2)+SQR(x3);
-        phydro->u(IDN,k,j,i) = rho/std::min(r2,r0*r0);
+        phydro->u(IDN,k,j,i) = rho/std::max(r2,r0*r0)*SQR(r0);
         phydro->u(IM1,k,j,i) = 0.0;
         phydro->u(IM2,k,j,i) = 0.0;
         phydro->u(IM3,k,j,i) = 0.0;
