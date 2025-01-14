@@ -147,9 +147,9 @@ void ATHDF5Output::WriteOutputFile(Mesh *pm, ParameterInput *pin, bool flag) {
       num_variables[n_dataset] += 13;
 
     if(CRDIFFUSION_ENABLED) {
-      num_variables[n_dataset] += 2;
+      num_variables[n_dataset] += pmb->pcrdiff->NECRbin + 1;
       if (pmb->pcrdiff->output_defect)
-        num_variables[n_dataset] += 1;
+        num_variables[n_dataset] += pmb->pcrdiff->NECRbin;
     }
 
     // Passive scalars:
